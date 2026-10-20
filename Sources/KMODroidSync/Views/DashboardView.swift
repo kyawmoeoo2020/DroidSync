@@ -13,10 +13,10 @@ public struct DashboardView: View {
                             Circle()
                                 .fill(Color.accentColor.opacity(0.12))
                                 .frame(width: 80, height: 80)
-                            Image(systemName: "iphone.gen3")
+                            Image(systemName: device.platform == .ios ? "apple.logo" : "iphone.gen3")
                                 .resizable()
                                 .scaledToFit()
-                                .frame(width: 40, height: 40)
+                                .frame(width: 36, height: 36)
                                 .foregroundColor(.accentColor)
                         }
 
