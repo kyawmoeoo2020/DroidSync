@@ -2,7 +2,6 @@ import Foundation
 
 public enum DevicePlatform: String, Codable, CaseIterable, Sendable {
     case android = "Android"
-    case ios = "iOS"
 }
 
 public enum ConnectionType: String, Codable, CaseIterable, Sendable {

@@ -118,7 +118,7 @@ private struct DeviceRow: View {
 
     var body: some View {
         HStack(spacing: 10) {
-            Image(systemName: device.platform == .ios ? "apple.logo" : (device.connectionType == .wifi ? "wifi" : "cable.connector"))
+            Image(systemName: device.connectionType == .wifi ? "wifi" : "cable.connector")
                 .foregroundColor(isSelected ? .accentColor : .secondary)
                 .frame(width: 18)
 

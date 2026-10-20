@@ -90,17 +90,13 @@ public final class AppState: ObservableObject {
 
     public func refreshDevices() {
         Task {
-            async let androidDevices = ADBManager.shared.scanDevices()
-            async let iosDevices = IOSManager.shared.scanIOSDevices()
-            let (android, ios) = await (androidDevices, iosDevices)
-            let combined = android + ios
+            let devices = await ADBManager.shared.scanDevices()
+            self.connectedDevices = devices
 
-            self.connectedDevices = combined
-
-            if self.selectedDevice == nil, let first = combined.first {
+            if self.selectedDevice == nil, let first = devices.first {
                 self.selectedDevice = first
-            } else if let current = self.selectedDevice, !combined.contains(where: { $0.id == current.id }) {
-                self.selectedDevice = combined.first
+            } else if let current = self.selectedDevice, !devices.contains(where: { $0.id == current.id }) {
+                self.selectedDevice = devices.first
             }
         }
     }
