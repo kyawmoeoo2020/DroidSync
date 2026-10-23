@@ -17,14 +17,12 @@ public final class PreviewManager: ObservableObject {
         self.cacheDir = temp
     }
 
-    public func quickLook(file: DeviceFile, serial: String) async {
-        guard !file.isDirectory else { return }
-
+    public func quickLook(remotePath: String, filename: String, serial: String) async {
         isLoading = true
-        let localTempURL = cacheDir.appendingPathComponent(file.name)
+        let localTempURL = cacheDir.appendingPathComponent(filename)
 
         do {
-            try await ADBManager.shared.pullFile(serial: serial, remotePath: file.path, localURL: localTempURL)
+            try await ADBManager.shared.pullFile(serial: serial, remotePath: remotePath, localURL: localTempURL)
             self.previewURL = localTempURL
             self.isPreviewing = true
         } catch {
@@ -32,6 +30,11 @@ public final class PreviewManager: ObservableObject {
         }
 
         isLoading = false
+    }
+
+    public func quickLook(file: DeviceFile, serial: String) async {
+        guard !file.isDirectory else { return }
+        await quickLook(remotePath: file.path, filename: file.name, serial: serial)
     }
 
     public func closePreview() {

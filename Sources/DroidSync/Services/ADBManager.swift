@@ -912,6 +912,134 @@ public final class ADBManager: @unchecked Sendable {
         _ = try await executeAdb(["-s", serial, "shell", "mkdir", "-p", quoted])
     }
 
+    /// Rename or move file / directory on device
+    public func renamePath(serial: String, oldPath: String, newName: String) async throws {
+        let parent = (oldPath as NSString).deletingLastPathComponent
+        let cleanNewName = newName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleanNewName.isEmpty, !cleanNewName.contains("/") else {
+            throw NSError(domain: "ADBManager", code: 400, userInfo: [NSLocalizedDescriptionKey: "Invalid file name."])
+        }
+        let newPath = parent == "/" ? "/\(cleanNewName)" : "\(parent)/\(cleanNewName)"
+        let quotedOld = "'\(oldPath.replacingOccurrences(of: "'", with: "'\\''"))'"
+        let quotedNew = "'\(newPath.replacingOccurrences(of: "'", with: "'\\''"))'"
+        let res = try await executeAdbDetailed(["-s", serial, "shell", "mv", quotedOld, quotedNew])
+        if res.exitCode != 0 {
+            throw NSError(domain: "ADBManager", code: Int(res.exitCode), userInfo: [NSLocalizedDescriptionKey: res.combinedOutput])
+        }
+    }
+
+    /// Deep search across Android storage
+    public func searchFiles(serial: String, basePath: String, query: String, maxResults: Int = 80) async throws -> [DeviceFile] {
+        let cleanQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleanQuery.isEmpty else { return [] }
+        let target = basePath.isEmpty ? "/sdcard" : basePath
+        let quotedTarget = "'\(target.replacingOccurrences(of: "'", with: "'\\''"))'"
+        let safeQuery = cleanQuery.replacingOccurrences(of: "'", with: "")
+
+        let script = """
+        find \(quotedTarget) -maxdepth 5 -iname '*\(safeQuery)*' 2>/dev/null | head -n \(maxResults) | while IFS= read -r f; do
+            [ -e "$f" ] && ls -ld "$f" 2>/dev/null
+        done
+        """
+        let raw = try await executeAdb(["-s", serial, "shell", "sh", "-c", script])
+        var results: [DeviceFile] = []
+        for line in raw.components(separatedBy: .newlines) {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            if trimmed.isEmpty { continue }
+            let tokens = trimmed.split(whereSeparator: \.isWhitespace).map(String.init)
+            guard tokens.count >= 6 else { continue }
+
+            let permissions = tokens[0]
+            let isDir = permissions.hasPrefix("d")
+            var sizeBytes: Int64 = 0
+            if !isDir && tokens.count >= 5 {
+                sizeBytes = Int64(tokens[4]) ?? 0
+            }
+
+            var filePath = ""
+            if let pathIndex = tokens.enumerated().first(where: { $0.offset >= 5 && $0.element.hasPrefix("/") })?.offset {
+                filePath = tokens.dropFirst(pathIndex).joined(separator: " ")
+            } else if tokens.count >= 7 {
+                filePath = tokens.dropFirst(6).joined(separator: " ")
+            }
+
+            if !filePath.isEmpty {
+                let name = (filePath as NSString).lastPathComponent
+                results.append(DeviceFile(
+                    name: name,
+                    path: filePath,
+                    isDirectory: isDir,
+                    sizeBytes: sizeBytes,
+                    modifiedDate: nil,
+                    permissions: permissions
+                ))
+            }
+        }
+        return results
+    }
+
+    /// Scan and fetch media files (photos, videos) from device storage
+    public func fetchMediaFiles(serial: String, source: MediaSource) async throws -> [PhotoItem] {
+        let searchRoots = source.searchPaths
+        var combinedScript = ""
+        for path in searchRoots {
+            let quoted = "'\(path.replacingOccurrences(of: "'", with: "'\\''"))'"
+            combinedScript += """
+            if [ -d \(quoted) ]; then
+                find \(quoted) -maxdepth 3 -type f \\( -iname "*.jpg" -o -iname "*.jpeg" -o -iname "*.png" -o -iname "*.webp" -o -iname "*.heic" -o -iname "*.mp4" -o -iname "*.mov" \\) 2>/dev/null | head -n 300 | while IFS= read -r f; do
+                    [ -f "$f" ] && stat -c "%s %Y %n" "$f" 2>/dev/null || ls -ld "$f" 2>/dev/null
+                done
+            fi
+            """
+        }
+        let raw = try await executeAdb(["-s", serial, "shell", "sh", "-c", combinedScript])
+        var items: [PhotoItem] = []
+        var seenPaths = Set<String>()
+
+        for line in raw.components(separatedBy: .newlines) {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            if trimmed.isEmpty { continue }
+
+            let tokens = trimmed.split(whereSeparator: \.isWhitespace).map(String.init)
+            guard tokens.count >= 3 else { continue }
+
+            var size: Int64 = 0
+            var timestamp: TimeInterval = 0
+            var path = ""
+
+            // stat format: "%s %Y %n"
+            if let parsedSize = Int64(tokens[0]), let parsedTime = TimeInterval(tokens[1]) {
+                size = parsedSize
+                timestamp = parsedTime
+                path = tokens.dropFirst(2).joined(separator: " ")
+            } else if tokens.count >= 6 {
+                // Fallback to ls -ld format
+                size = Int64(tokens[4]) ?? 0
+                if let pIdx = tokens.enumerated().first(where: { $0.offset >= 5 && $0.element.hasPrefix("/") })?.offset {
+                    path = tokens.dropFirst(pIdx).joined(separator: " ")
+                }
+            }
+
+            guard !path.isEmpty, !seenPaths.contains(path) else { continue }
+            seenPaths.insert(path)
+
+            let filename = (path as NSString).lastPathComponent
+            let ext = (path as NSString).pathExtension.lowercased()
+            let isVideo = ["mp4", "mov", "mkv", "3gp"].contains(ext)
+            let date = timestamp > 0 ? Date(timeIntervalSince1970: timestamp) : Date()
+
+            items.append(PhotoItem(
+                name: filename,
+                path: path,
+                sizeBytes: size,
+                dateModified: date,
+                isVideo: isVideo
+            ))
+        }
+
+        return items.sorted { $0.dateModified > $1.dateModified }
+    }
+
     /// Parse known Android Package Manager installation errors into user-friendly guidance
     public static func parseInstallFailure(output: String) -> String {
         let regex = try? NSRegularExpression(pattern: "Failure\\s*\\[([A-Z_0-9]+)(?::\\s*([^\\]]+))?\\]", options: [.caseInsensitive])
@@ -1416,5 +1544,51 @@ public final class ADBManager: @unchecked Sendable {
             }
         }
         throw NSError(domain: "ADBManager", code: 404, userInfo: [NSLocalizedDescriptionKey: "Could not locate APK path for \(packageName)"])
+    }
+
+    // MARK: - Screen Mirroring (scrcpy)
+
+    /// Discovers scrcpy binary on macOS
+    public func resolveScrcpyPath() -> String? {
+        let possiblePaths = [
+            "/opt/homebrew/bin/scrcpy",
+            "/usr/local/bin/scrcpy",
+            "/opt/local/bin/scrcpy",
+            "/usr/bin/scrcpy"
+        ]
+        for path in possiblePaths {
+            if FileManager.default.isExecutableFile(atPath: path) {
+                return path
+            }
+        }
+        let shellCheck = runProcess(executable: "/usr/bin/which", arguments: ["scrcpy"]).trimmingCharacters(in: .whitespacesAndNewlines)
+        if !shellCheck.isEmpty && FileManager.default.isExecutableFile(atPath: shellCheck) {
+            return shellCheck
+        }
+        return nil
+    }
+
+    public var isScrcpyAvailable: Bool {
+        resolveScrcpyPath() != nil
+    }
+
+    /// Launch Screen Mirroring via scrcpy
+    @discardableResult
+    public func launchScreenMirror(serial: String, title: String? = nil) async throws -> Process {
+        guard let scrcpy = resolveScrcpyPath() else {
+            throw NSError(
+                domain: "ADBManager",
+                code: 404,
+                userInfo: [NSLocalizedDescriptionKey: "scrcpy not found. Install it easily with Homebrew: brew install scrcpy"]
+            )
+        }
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: scrcpy)
+        var args = ["-s", serial, "--stay-awake"]
+        let windowTitle = title ?? "DroidSync — Screen Mirror"
+        args.append(contentsOf: ["--window-title", windowTitle])
+        process.arguments = args
+        try process.run()
+        return process
     }
 }

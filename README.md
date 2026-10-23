@@ -40,13 +40,22 @@
 - **Live Battery Health**: Battery percentage, charging status, and live battery temperature gauge (°C).
 - **Storage Overview**: Visual progress meter showing used vs. free internal storage.
 - **Device Details**: Automatic detection of device model, manufacturer, Android OS version, and serial ID.
+- **🖥️ 1-Click Screen Mirroring**: Mirror and control your phone live on your Mac with zero-latency 60fps display, full mouse interaction, and Mac keyboard typing (`scrcpy` integration).
 
 ### 📁 Finder-Grade File Browser (List & Grid Views)
 - **Dual Layout Modes**: Switch between detailed **List View** and Finder-style **Grid View** with scalable icon previews.
+- **✏️ In-Place File & Folder Renaming**: Rename files and folders directly with right-click ➔ **Rename...**.
+- **🔍 Deep Device Search**: Search scope switcher to search the current directory or search everywhere across the entire phone storage recursively.
 - **Two-way Drag & Drop**: Drag files and folders directly between macOS Finder and your Android storage.
 - **👁 Quick Look (Spacebar Preview)**: Preview photos, audio, videos, and documents directly from the device without transferring them first.
 - **Real-Time Transfer Progress**: Accurate progress bar displaying real-time transfer speed (MB/s), bytes transferred, percentage, and estimated time remaining (ETA).
 - **Multi-Selection & Batch Actions**: Batch download, multi-file deletion, and folder creation.
+
+### 🖼️ Dedicated Camera & Photos Media Gallery
+- **Apple Photos-Style Gallery**: Visual photo grid organized by source: **Camera (DCIM)**, **Pictures**, **Screenshots**, and **Videos**.
+- **Thumbnail Zoom Slider**: Dynamically resize photo thumbnails from compact to extra-large.
+- **1-Click Import to Mac**: Select multiple photos and batch export them straight into your Mac's Pictures or custom folder.
+- **Direct Quick Look**: Spacebar or double-click to view photos and videos in full resolution without downloading them first.
 
 ### 📸 Device Screenshots & Screen Recording
 - **1-Click Screenshot Tool**: Captures full-resolution phone screenshots in sub-second time via native binary streaming (`exec-out screencap -p`).

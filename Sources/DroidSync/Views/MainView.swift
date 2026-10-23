@@ -13,7 +13,9 @@ public struct MainView: View {
                 switch appState.currentSection {
                 case .dashboard:
                     DashboardView(appState: appState)
-                case .files, .photos, .downloads, .music:
+                case .photos:
+                    PhotoGalleryView(appState: appState)
+                case .files, .downloads, .music:
                     FileBrowserView(appState: appState)
                 case .apps:
                     AppManagerView(appState: appState)

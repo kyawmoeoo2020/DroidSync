@@ -9,6 +9,7 @@ public struct DashboardView: View {
     @State private var capturedScreenshot: NSImage?
     @State private var isCapturingScreenshot = false
     @State private var showClipboardSheet = false
+    @State private var showScrcpyInstallSheet = false
     @State private var toolStatusMessage = ""
     @State private var toolStatusIsError = false
 
@@ -192,6 +193,16 @@ public struct DashboardView: View {
                             .font(.headline)
 
                         HStack(spacing: 12) {
+                            // Screen Mirror Button
+                            QuickActionButton(
+                                title: "Screen Mirror",
+                                subtitle: "Live Display & Mouse",
+                                icon: "macbook.and.iphone",
+                                color: .purple
+                            ) {
+                                triggerScreenMirror(serial: device.id)
+                            }
+
                             // Screenshot Button
                             QuickActionButton(
                                 title: isCapturingScreenshot ? "Capturing..." : "Screenshot",
@@ -298,12 +309,12 @@ public struct DashboardView: View {
                             }
 
                             QuickActionButton(
-                                title: "Camera DCIM",
-                                subtitle: "Photos & Videos",
-                                icon: "photo.fill",
+                                title: "Photos & Media",
+                                subtitle: "Gallery & Export",
+                                icon: "photo.on.rectangle.angled",
                                 color: .purple
                             ) {
-                                appState.navigateTo(path: "/sdcard/DCIM")
+                                appState.currentSection = .photos
                             }
 
                             QuickActionButton(
@@ -398,6 +409,12 @@ public struct DashboardView: View {
                 }
             }
         }
+        // Screen Mirror Helper Sheet
+        .sheet(isPresented: $showScrcpyInstallSheet) {
+            ScrcpyInstallSheet {
+                showScrcpyInstallSheet = false
+            }
+        }
         // Reboot Confirmation Alert
         .alert(isPresented: $showRebootAlert) {
             Alert(
@@ -412,6 +429,30 @@ public struct DashboardView: View {
     }
 
     // MARK: - Actions
+
+    private func triggerScreenMirror(serial: String) {
+        if ADBManager.shared.isScrcpyAvailable {
+            toolStatusMessage = "Launching Screen Mirror..."
+            toolStatusIsError = false
+            Task {
+                do {
+                    let title = "\(appState.selectedDevice?.name ?? "Android") — DroidSync Mirror"
+                    try await ADBManager.shared.launchScreenMirror(serial: serial, title: title)
+                    await MainActor.run {
+                        self.toolStatusMessage = "Screen Mirror active"
+                        self.toolStatusIsError = false
+                    }
+                } catch {
+                    await MainActor.run {
+                        self.toolStatusMessage = "Failed to launch mirror: \(error.localizedDescription)"
+                        self.toolStatusIsError = true
+                    }
+                }
+            }
+        } else {
+            showScrcpyInstallSheet = true
+        }
+    }
 
     private func captureScreenshot(serial: String) {
         isCapturingScreenshot = true
@@ -837,6 +878,95 @@ private struct SendClipboardSheet: View {
                     self.statusMessage = "Failed: \(error.localizedDescription)"
                 }
             }
+        }
+    }
+}
+
+// MARK: - Scrcpy Install Sheet
+
+private struct ScrcpyInstallSheet: View {
+    let onDismiss: () -> Void
+    @State private var copiedCommand = false
+
+    var body: some View {
+        VStack(spacing: 18) {
+            HStack {
+                Spacer()
+                Button("Done") { onDismiss() }
+                    .keyboardShortcut(.cancelAction)
+            }
+
+            ZStack {
+                Circle()
+                    .fill(Color.purple.opacity(0.12))
+                    .frame(width: 72, height: 72)
+                Image(systemName: "macbook.and.iphone")
+                    .font(.system(size: 32))
+                    .foregroundColor(.purple)
+            }
+
+            VStack(spacing: 6) {
+                Text("Enable Screen Mirroring")
+                    .font(.title2)
+                    .fontWeight(.bold)
+
+                Text("DroidSync uses the high-performance **scrcpy** engine for zero-latency 60fps screen display, mouse control, and typing.")
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: 420)
+            }
+
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Install via Homebrew in Terminal:")
+                    .font(.caption)
+                    .fontWeight(.semibold)
+                    .foregroundColor(.secondary)
+
+                HStack {
+                    Text("brew install scrcpy")
+                        .font(.system(.body, design: .monospaced))
+                        .foregroundColor(.primary)
+
+                    Spacer()
+
+                    Button(action: copyCommand) {
+                        Label(copiedCommand ? "Copied!" : "Copy", systemImage: copiedCommand ? "checkmark" : "doc.on.doc")
+                    }
+                    .controlSize(.small)
+                }
+                .padding(10)
+                .background(Color(NSColor.textBackgroundColor))
+                .cornerRadius(8)
+                .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color.secondary.opacity(0.2), lineWidth: 1))
+            }
+            .frame(maxWidth: 400)
+
+            HStack(spacing: 12) {
+                Button("Open Terminal") {
+                    let script = "tell application \"Terminal\" to do script \"brew install scrcpy\""
+                    if let appleScript = NSAppleScript(source: script) {
+                        var error: NSDictionary?
+                        appleScript.executeAndReturnError(&error)
+                    }
+                }
+                .buttonStyle(.bordered)
+
+                Button("I've Installed It / Refresh") {
+                    onDismiss()
+                }
+                .buttonStyle(.borderedProminent)
+            }
+        }
+        .padding(24)
+        .frame(width: 480)
+    }
+
+    private func copyCommand() {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString("brew install scrcpy", forType: .string)
+        withAnimation {
+            copiedCommand = true
         }
     }
 }

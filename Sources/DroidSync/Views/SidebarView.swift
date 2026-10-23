@@ -82,9 +82,9 @@ public struct SidebarView: View {
                     SidebarNavItem(
                         title: "Camera & Photos",
                         icon: "photo.on.rectangle.angled",
-                        isSelected: isCurrentPath("/sdcard/DCIM")
+                        isSelected: appState.currentSection == .photos
                     ) {
-                        appState.navigateTo(path: "/sdcard/DCIM")
+                        appState.currentSection = .photos
                     }
 
                     SidebarNavItem(

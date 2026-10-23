@@ -20,6 +20,23 @@ public struct FileBrowserView: View {
     @State private var browserMessage = ""
     @State private var isBrowserError = false
 
+    // In-place Rename state
+    @State private var showingRenameDialog = false
+    @State private var fileToRename: DeviceFile?
+    @State private var newFileName = ""
+
+    // Deep Device Search state
+    @State private var isDeepSearch = false
+    @State private var isPerformingDeepSearch = false
+    @State private var deepSearchResults: [DeviceFile] = []
+
+    private var displayedFiles: [DeviceFile] {
+        if isDeepSearch && !appState.searchText.isEmpty {
+            return deepSearchResults
+        }
+        return appState.filteredFiles
+    }
+
     public var body: some View {
         VStack(spacing: 0) {
             // Path Navigation & Action Bar
@@ -86,22 +103,56 @@ public struct FileBrowserView: View {
                     .cornerRadius(12)
                 }
 
-                // Search Bar
-                HStack {
-                    Image(systemName: "magnifyingglass")
-                        .foregroundColor(.secondary)
-                    TextField("Search files...", text: $appState.searchText)
+                // Search Bar with Scope Menu
+                HStack(spacing: 5) {
+                    Menu {
+                        Button {
+                            isDeepSearch = false
+                            deepSearchResults.removeAll()
+                        } label: {
+                            Label("Current Folder Only", systemImage: "folder")
+                        }
+
+                        Button {
+                            isDeepSearch = true
+                            performDeepSearch()
+                        } label: {
+                            Label("Everywhere on Device (Deep Search)", systemImage: "globe")
+                        }
+                    } label: {
+                        Image(systemName: isDeepSearch ? "globe" : "folder")
+                            .foregroundColor(isDeepSearch ? .accentColor : .secondary)
+                            .font(.system(size: 11))
+                    }
+                    .menuStyle(BorderlessButtonMenuStyle())
+                    .frame(width: 18)
+                    .help(isDeepSearch ? "Deep Search everywhere on Android storage" : "Searching current folder")
+
+                    TextField(isDeepSearch ? "Deep search device..." : "Search files...", text: $appState.searchText)
                         .textFieldStyle(PlainTextFieldStyle())
-                        .frame(width: 130)
-                    if !appState.searchText.isEmpty {
-                        Button(action: { appState.searchText = "" }) {
+                        .frame(width: 135)
+                        .onSubmit {
+                            if isDeepSearch {
+                                performDeepSearch()
+                            }
+                        }
+
+                    if isPerformingDeepSearch {
+                        ProgressView()
+                            .scaleEffect(0.55)
+                            .frame(width: 14, height: 14)
+                    } else if !appState.searchText.isEmpty {
+                        Button(action: {
+                            appState.searchText = ""
+                            deepSearchResults.removeAll()
+                        }) {
                             Image(systemName: "xmark.circle.fill")
                                 .foregroundColor(.secondary)
                         }
                         .buttonStyle(PlainButtonStyle())
                     }
                 }
-                .padding(.horizontal, 8)
+                .padding(.horizontal, 6)
                 .padding(.vertical, 4)
                 .background(Color(NSColor.textBackgroundColor))
                 .cornerRadius(6)
@@ -205,6 +256,30 @@ public struct FileBrowserView: View {
                 Divider()
             }
 
+            // Deep Search Active Banner
+            if isDeepSearch && !appState.searchText.isEmpty {
+                HStack(spacing: 8) {
+                    Image(systemName: "globe")
+                        .foregroundColor(.accentColor)
+                    Text("Deep Search: Found \(deepSearchResults.count) item\(deepSearchResults.count == 1 ? "" : "s") across device for \"\(appState.searchText)\"")
+                        .font(.caption)
+                        .fontWeight(.medium)
+                    Spacer()
+                    Button("Exit Deep Search") {
+                        isDeepSearch = false
+                        deepSearchResults.removeAll()
+                        appState.searchText = ""
+                    }
+                    .font(.caption)
+                    .buttonStyle(.borderless)
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 6)
+                .background(Color.accentColor.opacity(0.12))
+
+                Divider()
+            }
+
             // File Table / List / Grid
             if appState.isLoadingFiles {
                 VStack(spacing: 12) {
@@ -214,15 +289,15 @@ public struct FileBrowserView: View {
                         .foregroundColor(.secondary)
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if appState.filteredFiles.isEmpty {
+            } else if displayedFiles.isEmpty {
                 VStack(spacing: 12) {
-                    Image(systemName: "folder")
+                    Image(systemName: isDeepSearch ? "magnifyingglass" : "folder")
                         .font(.system(size: 48))
                         .foregroundColor(.secondary)
-                    Text("This folder is empty")
+                    Text(isDeepSearch ? "No files found" : "This folder is empty")
                         .font(.headline)
                         .foregroundColor(.secondary)
-                    Text("Drag files from your Mac here to upload them.")
+                    Text(isDeepSearch ? "Try searching for a different keyword or file extension." : "Drag files from your Mac here to upload them.")
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }
@@ -272,6 +347,17 @@ public struct FileBrowserView: View {
                 createFolder()
             }
         }
+        .sheet(isPresented: $showingRenameDialog) {
+            RenameItemSheet(
+                originalName: fileToRename?.name ?? "",
+                newName: $newFileName,
+                onConfirm: executeRename,
+                onCancel: {
+                    showingRenameDialog = false
+                    fileToRename = nil
+                }
+            )
+        }
         .sheet(isPresented: $previewManager.isPreviewing) {
             if let url = previewManager.previewURL {
                 QuickLookModalView(url: url) {
@@ -296,7 +382,7 @@ public struct FileBrowserView: View {
     @ViewBuilder
     private func renderListView() -> some View {
         List {
-            ForEach(appState.filteredFiles) { file in
+            ForEach(displayedFiles) { file in
                 let isSelected = appState.selectedFileIDs.contains(file.id)
 
                 FileRowView(
@@ -330,7 +416,7 @@ public struct FileBrowserView: View {
                 ],
                 spacing: 14
             ) {
-                ForEach(appState.filteredFiles) { file in
+                ForEach(displayedFiles) { file in
                     let isSelected = appState.selectedFileIDs.contains(file.id)
 
                     FileGridItemView(
@@ -358,6 +444,11 @@ public struct FileBrowserView: View {
 
     private func handleDoubleClick(file: DeviceFile) {
         if file.isDirectory {
+            if isDeepSearch {
+                isDeepSearch = false
+                deepSearchResults.removeAll()
+                appState.searchText = ""
+            }
             appState.navigateTo(path: file.path)
         } else {
             triggerQuickLook(file: file)
@@ -404,6 +495,9 @@ public struct FileBrowserView: View {
             Button("Download to Mac...") {
                 appState.selectSingleFile(file)
                 downloadSelectedFiles()
+            }
+            Button("Rename...") {
+                promptRename(file)
             }
             Divider()
             Button("Delete", role: .destructive) {
@@ -544,6 +638,73 @@ public struct FileBrowserView: View {
                 await MainActor.run {
                     browserMessage = "Failed to delete: \(error.localizedDescription)"
                     isBrowserError = true
+                }
+            }
+        }
+    }
+
+    private func promptRename(_ file: DeviceFile) {
+        fileToRename = file
+        newFileName = file.name
+        showingRenameDialog = true
+    }
+
+    private func executeRename() {
+        guard let device = appState.selectedDevice, let file = fileToRename else { return }
+        let targetName = newFileName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !targetName.isEmpty, targetName != file.name else {
+            showingRenameDialog = false
+            return
+        }
+
+        showingRenameDialog = false
+        Task {
+            do {
+                try await ADBManager.shared.renamePath(serial: device.id, oldPath: file.path, newName: targetName)
+                await MainActor.run {
+                    self.browserMessage = "Renamed to \"\(targetName)\""
+                    self.isBrowserError = false
+                    self.appState.loadFiles(at: self.appState.currentPath)
+                }
+            } catch {
+                await MainActor.run {
+                    self.browserMessage = "Rename failed: \(error.localizedDescription)"
+                    self.isBrowserError = true
+                }
+            }
+        }
+    }
+
+    private func performDeepSearch() {
+        guard let device = appState.selectedDevice else { return }
+        let query = appState.searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else {
+            deepSearchResults.removeAll()
+            return
+        }
+
+        isPerformingDeepSearch = true
+        browserMessage = "Searching device storage..."
+        isBrowserError = false
+
+        Task {
+            do {
+                let results = try await ADBManager.shared.searchFiles(serial: device.id, basePath: "/sdcard", query: query)
+                await MainActor.run {
+                    self.deepSearchResults = results
+                    self.isPerformingDeepSearch = false
+                    self.isDeepSearch = true
+                    if results.isEmpty {
+                        self.browserMessage = "No files found matching \"\(query)\""
+                    } else {
+                        self.browserMessage = "Found \(results.count) item\(results.count == 1 ? "" : "s") across storage"
+                    }
+                }
+            } catch {
+                await MainActor.run {
+                    self.isPerformingDeepSearch = false
+                    self.browserMessage = "Deep search error: \(error.localizedDescription)"
+                    self.isBrowserError = true
                 }
             }
         }
@@ -771,7 +932,7 @@ private struct NewFolderSheet: View {
     }
 }
 
-private struct QuickLookModalView: View {
+struct QuickLookModalView: View {
     let url: URL
     let onClose: () -> Void
 
@@ -818,5 +979,47 @@ private struct QuickLookModalView: View {
                 .frame(width: 450, height: 300)
             }
         }
+    }
+}
+
+// MARK: - Rename Item Sheet
+
+private struct RenameItemSheet: View {
+    let originalName: String
+    @Binding var newName: String
+    let onConfirm: () -> Void
+    let onCancel: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("Rename Item")
+                .font(.headline)
+
+            Text("Enter a new name for \"\(originalName)\":")
+                .font(.caption)
+                .foregroundColor(.secondary)
+
+            TextField("New name", text: $newName)
+                .textFieldStyle(RoundedBorderTextFieldStyle())
+                .frame(width: 320)
+                .onSubmit {
+                    if !newName.trimmingCharacters(in: .whitespaces).isEmpty && newName != originalName {
+                        onConfirm()
+                    }
+                }
+
+            HStack {
+                Spacer()
+                Button("Cancel", action: onCancel)
+                    .keyboardShortcut(.cancelAction)
+
+                Button("Rename", action: onConfirm)
+                    .buttonStyle(.borderedProminent)
+                    .disabled(newName.trimmingCharacters(in: .whitespaces).isEmpty || newName == originalName)
+                    .keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(20)
+        .frame(width: 360)
     }
 }
