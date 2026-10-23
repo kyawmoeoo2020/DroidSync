@@ -137,7 +137,7 @@ public struct SidebarView: View {
 
             // Footer
             HStack {
-                Text("DroidSync v1.0.0")
+                Text("DroidSync v\(DroidSyncApp.appVersion)")
                     .font(.system(size: 10))
                     .foregroundColor(.secondary)
                 Spacer()
@@ -172,7 +172,7 @@ public struct SidebarView: View {
     private func openAbout() {
         var options: [NSApplication.AboutPanelOptionKey: Any] = [
             .applicationName: "DroidSync",
-            .version: "1.0.0",
+            .version: DroidSyncApp.appVersion,
             .credits: NSAttributedString(
                 string: "Developed by Kyaw Moe Oo\n\nHigh-performance native Android sync tool for macOS",
                 attributes: [.foregroundColor: NSColor.secondaryLabelColor]

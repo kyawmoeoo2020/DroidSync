@@ -3,6 +3,10 @@ import AppKit
 
 @main
 struct DroidSyncApp: App {
+    public static var appVersion: String {
+        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.2.0"
+    }
+
     init() {
         NSApplication.shared.setActivationPolicy(.regular)
         // In bundled apps, macOS loads CFBundleIconFile from Info.plist natively.
@@ -44,7 +48,7 @@ struct DroidSyncApp: App {
 
         var options: [NSApplication.AboutPanelOptionKey: Any] = [
             .applicationName: "DroidSync",
-            .version: "1.0.0",
+            .version: Self.appVersion,
             .credits: NSAttributedString(
                 string: "Developed by Kyaw Moe Oo\n\nHigh-performance native Android sync tool for macOS",
                 attributes: [.foregroundColor: NSColor.secondaryLabelColor]
