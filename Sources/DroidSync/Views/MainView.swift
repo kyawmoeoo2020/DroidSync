@@ -32,8 +32,8 @@ public struct MainView: View {
 
     private var navigationTitle: String {
         if let device = appState.selectedDevice {
-            return "\(device.name) — KMO DroidSync"
+            return "\(device.name) — DroidSync"
         }
-        return "KMO DroidSync"
+        return "DroidSync"
     }
 }

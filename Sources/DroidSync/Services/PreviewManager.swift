@@ -12,7 +12,7 @@ public final class PreviewManager: ObservableObject {
     private let cacheDir: URL
 
     private init() {
-        let temp = FileManager.default.temporaryDirectory.appendingPathComponent("KMODroidSyncPreviews", isDirectory: true)
+        let temp = FileManager.default.temporaryDirectory.appendingPathComponent("DroidSyncPreviews", isDirectory: true)
         try? FileManager.default.createDirectory(at: temp, withIntermediateDirectories: true)
         self.cacheDir = temp
     }

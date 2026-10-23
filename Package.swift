@@ -2,19 +2,22 @@
 import PackageDescription
 
 let package = Package(
-    name: "KMODroidSync",
+    name: "DroidSync",
     platforms: [
         .macOS(.v14)
     ],
     products: [
-        .executable(name: "KMODroidSync", targets: ["KMODroidSync"])
+        .executable(name: "DroidSync", targets: ["DroidSync"])
     ],
     dependencies: [],
     targets: [
         .executableTarget(
-            name: "KMODroidSync",
+            name: "DroidSync",
             dependencies: [],
-            path: "Sources/KMODroidSync"
+            path: "Sources/DroidSync",
+            resources: [
+                .process("Resources")
+            ]
         )
     ]
 )

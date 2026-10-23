@@ -1,72 +1,129 @@
-# KMO DroidSync
+# DroidSync
 
-**KMO DroidSync** is a high-performance, native macOS application designed to connect and manage Android devices with zero friction. Built with **SwiftUI** for macOS 14+, it replaces outdated and bloated tools like Android File Transfer, OpenMTP, and MacDroid with a lightweight, native, and responsive experience.
+<p align="center">
+  <img src="Resources/DroidSync_Logo.png" width="128" height="128" alt="DroidSync Logo" />
+</p>
 
----
+<p align="center">
+  <strong>Native macOS Android Device Manager</strong><br />
+  High-performance, featherweight, and beautiful macOS companion for Android devices.
+</p>
 
-## ✨ Features
-
-- **⚡️ 100% Native macOS (SwiftUI)**: Featherweight (~1.7 MB binary, <20 MB RAM), instant startup, dark mode & macOS Sonoma/Sequoia design language.
-- **📱 Real-time Dashboard**:
-  - Live battery health gauge, temperature, and charging status.
-  - Storage breakdown meter (used vs. free space).
-  - Hardware specs and OS version detection.
-- **📁 High-Speed File Explorer**:
-  - Breadcrumb navigation (`Internal Storage > DCIM > Camera`).
-  - Search filter.
-  - Two-way drag-and-drop directly with macOS Finder.
-  - Multi-file download and upload.
-  - Folder creation and file deletion.
-- **👁 Quick Look (Spacebar Preview)**:
-  - Preview images, text, and documents directly on the phone without copying them to your Mac first.
-- **📦 App Manager & Installer**:
-  - View installed third-party apps and packages.
-  - Drag and drop `.apk` files directly into the window to install them.
-  - 1-click uninstaller.
-- **📊 Storage Lens**:
-  - Instant directory size analyzer (`du -k`) to find space-hogging folders.
-- **📶 Wireless ADB Pairing**:
-  - Complete wire-free management over local Wi-Fi.
-  - Built-in pairing wizard for Android 11+ Wireless Debugging.
-- **🚀 Background Transfer Queue**:
-  - Real-time transfer speed (MB/s), progress bar, and queue history.
+<p align="center">
+  <a href="https://github.com/kyawmoeoo2020/DroidSync/releases/latest"><img src="https://img.shields.io/github/v/release/kyawmoeoo2020/DroidSync?color=blue&label=Release" alt="Latest Release"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache%202.0-blue.svg" alt="License: Apache 2.0"></a>
+  <img src="https://img.shields.io/badge/macOS-14.0%2B-black?logo=apple" alt="macOS 14+">
+  <img src="https://img.shields.io/badge/Swift-6.0-orange?logo=swift" alt="Swift 6">
+  <img src="https://img.shields.io/badge/Platform-Android-green?logo=android" alt="Android">
+</p>
 
 ---
 
-## 🛠 Tech Stack
+**DroidSync** is a native macOS application engineered in **SwiftUI** and **Swift 6** to connect, control, and manage Android phones and tablets with zero friction. It completely replaces slow, clunky, and outdated alternatives like Android File Transfer, OpenMTP, and MacDroid with an ultra-responsive, lightweight experience designed specifically for Apple Silicon and Intel Macs.
 
-- **Language**: Swift 6
-- **UI Framework**: SwiftUI + AppKit (macOS 14+)
+**Author & Creator:** [Kyaw Moe Oo](https://github.com/kyawmoeoo2020)  
+**Copyright:** © 2026 Kyaw Moe Oo. All rights reserved.
+
+---
+
+## 📥 Download & Installation
+
+1. Download the latest **`DroidSync.dmg`** installer from the **[Releases Page](https://github.com/kyawmoeoo2020/DroidSync/releases/latest)**.
+2. Open `DroidSync.dmg` and drag **DroidSync** into your **Applications** folder.
+3. On your Android phone, enable **USB Debugging** in *Developer Options*, connect via USB or Wi-Fi, and launch DroidSync!
+
+---
+
+## ✨ Core Features
+
+### 📱 Real-time Dashboard & Hardware Diagnostics
+- **Live Battery Health**: Battery percentage, charging status, and live battery temperature gauge (°C).
+- **Storage Overview**: Visual progress meter showing used vs. free internal storage.
+- **Device Details**: Automatic detection of device model, manufacturer, Android OS version, and serial ID.
+
+### 📁 Finder-Grade File Browser (List & Grid Views)
+- **Dual Layout Modes**: Switch between detailed **List View** and Finder-style **Grid View** with scalable icon previews.
+- **Two-way Drag & Drop**: Drag files and folders directly between macOS Finder and your Android storage.
+- **👁 Quick Look (Spacebar Preview)**: Preview photos, audio, videos, and documents directly from the device without transferring them first.
+- **Real-Time Transfer Progress**: Accurate progress bar displaying real-time transfer speed (MB/s), bytes transferred, percentage, and estimated time remaining (ETA).
+- **Multi-Selection & Batch Actions**: Batch download, multi-file deletion, and folder creation.
+
+### 📸 Device Screenshots & Screen Recording
+- **1-Click Screenshot Tool**: Captures full-resolution phone screenshots in sub-second time via native binary streaming (`exec-out screencap -p`).
+- **Mac Preview & Copy**:
+  - **Copy to Clipboard**: Instantly copy the captured screenshot to your macOS clipboard for `⌘V` paste into Slack, Figma, Telegram, Notes, or Mail.
+  - **Save Image**: Save PNG directly to your Mac with automatic Finder reveal.
+- **Screen Recording**: 1-click screen recording to MP4 with live recording timer. Gracefully preserves MP4 container index and automatically reveals video in Finder.
+
+### 📦 App Manager & Batch APK Backup
+- **Comprehensive App Manager**: Inspect all installed apps, filtered by User Apps (3rd-party), System Apps, All Apps, and Frozen/Disabled Apps.
+- **Batch APK Backup**: Select multiple apps (or all apps) and export their `.apk` installers to Mac in a single click with progress bars.
+- **Drag & Drop APK Installer**: Drag any `.apk` file into DroidSync to automatically install it with `-r -d -g` runtime permissions.
+- **Device Controls**: Launch apps directly on the phone, force stop background apps, clear data/cache, or freeze/disable bloatware.
+
+### ⚡ Power & Hardware Quick Controls
+- **Reboot Menu**: 1-click shortcuts to **Normal Reboot**, **Recovery Mode**, and **Bootloader / Fastboot**.
+- **Lock / Wake Screen**: Instant hardware power key toggle (`KEYCODE_POWER`).
+- **Volume Adjustments**: Adjust phone volume up, down, or mute from your Mac.
+
+### 📋 Mac ➔ Phone Clipboard Sharing
+- **Push Text to Phone**: Automatically grabs current Mac clipboard or custom text and sends keystrokes directly into whatever input field is focused on Android.
+
+### 🧹 Storage Lens (Disk Space Analyzer)
+- **Folder Breakdown**: Interactive directory tree analyzing storage consumption folder by folder.
+- **Large Space Wasters**: Scans the phone for files exceeding 25MB, 50MB, 100MB, or 500MB with 1-click Quick Look preview, download, and delete.
+
+### 📶 Wireless ADB Pairing (Wi-Fi Mode)
+- **Cable-Free Freedom**: Built-in wireless pairing assistant compatible with Android 11+ Wireless Debugging (pairing code + port).
+- Reconnect to previously paired devices over local Wi-Fi with one click.
+
+---
+
+## 🛠 Tech Stack & Architecture
+
+- **Language**: Swift 6 (Strict Concurrency `Sendable` compliant)
+- **UI Framework**: SwiftUI + AppKit (macOS 14 Sonoma & macOS 15 Sequoia)
 - **Build System**: Swift Package Manager (SPM)
-- **Protocol**: Android Debug Bridge (ADB) via USB and Wi-Fi
+- **Protocol**: Android Debug Bridge (ADB) via high-speed Unix pipes & PTY
+- **Installer**: Custom DMG with background styling, volume icon, and Applications symlink
 
 ---
 
-## 🚀 Getting Started
+## 💻 Building from Source
 
-### 1. Launch the Built App
-The release bundle is ready inside `build/`:
-```bash
-open "/Users/kmo/.gemini/antigravity/scratch/kmo-droidsync/build/KMO DroidSync.app"
-```
+### Prerequisites
+- macOS 14.0 or later
+- Xcode 15+ / Xcode Command Line Tools
+- Android SDK Platform-Tools (`adb`)
 
-### 2. Run Directly via Terminal
+### Clone & Build
 ```bash
-cd /Users/kmo/.gemini/antigravity/scratch/kmo-droidsync
-swift run KMODroidSync
-```
+# Clone the repository
+git clone https://github.com/kyawmoeoo2020/DroidSync.git
+cd DroidSync
 
-### 3. Open in Xcode
-To edit, preview SwiftUI components, or build with Xcode:
-```bash
-open /Users/kmo/.gemini/antigravity/scratch/kmo-droidsync/Package.swift
+# Build debug binary
+swift build
+
+# Run directly
+swift run DroidSync
+
+# Package release macOS App bundle
+./bundle.sh
+
+# Generate release macOS DMG installer
+./build-dmg.sh
 ```
 
 ---
 
-## 📱 Connecting Your Phone
+## 📄 License & Attribution
 
-1. On your Android phone, enable **Developer Options** (tap `Build number` 7 times in Settings > About phone).
-2. Turn on **USB Debugging** (or **Wireless debugging**).
-3. Connect your phone to your Mac via USB cable or use the **Wireless Pairing** tab.
-4. When prompted on your phone, tap **"Always allow from this computer"**.
+DroidSync is open-source software licensed under the **[Apache License, Version 2.0](LICENSE)**.
+
+### Trademark & Name Notice
+The project name **"DroidSync"** and developer name **"Kyaw Moe Oo"** are identity identifiers of the original author.
+- Under Section 6 of the Apache License 2.0, this license does not grant permission to use the name or trademarks of the Licensor to endorse or promote derivative products.
+- In accordance with Section 4(d) and the [NOTICE](NOTICE) file, original author attribution to **Kyaw Moe Oo** must be preserved in all copies, derivative works, documentation, and user-facing credits.
+
+Copyright © 2026 **Kyaw Moe Oo**. All rights reserved.

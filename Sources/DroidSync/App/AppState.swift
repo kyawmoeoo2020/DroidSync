@@ -60,11 +60,89 @@ public final class AppState: ObservableObject {
     // File Browser state
     @Published public var currentPath: String = "/sdcard"
     @Published public var filesInCurrentDirectory: [DeviceFile] = []
-    @Published public var selectedFile: DeviceFile?
+    @Published public var selectedFileIDs: Set<String> = []
+    @Published public var lastSelectedFileID: String? = nil
     @Published public var isLoadingFiles: Bool = false
     @Published public var searchText: String = ""
 
+    public var selectedFile: DeviceFile? {
+        get {
+            guard let id = selectedFileIDs.first else { return nil }
+            return filesInCurrentDirectory.first { $0.id == id }
+        }
+        set {
+            if let file = newValue {
+                selectedFileIDs = [file.id]
+                lastSelectedFileID = file.id
+            } else {
+                selectedFileIDs.removeAll()
+                lastSelectedFileID = nil
+            }
+        }
+    }
+
+    public var selectedFiles: [DeviceFile] {
+        filesInCurrentDirectory.filter { selectedFileIDs.contains($0.id) }
+    }
+
+    public var selectedFilesTotalSize: Int64 {
+        selectedFiles.reduce(0) { $0 + $1.sizeBytes }
+    }
+
+    public var formattedSelectedSize: String {
+        ByteCountFormatter.string(fromByteCount: selectedFilesTotalSize, countStyle: .file)
+    }
+
+    public var isAllSelected: Bool {
+        !filteredFiles.isEmpty && filteredFiles.allSatisfy { selectedFileIDs.contains($0.id) }
+    }
+
+    public func toggleSelectAll() {
+        if isAllSelected {
+            selectedFileIDs.removeAll()
+            lastSelectedFileID = nil
+        } else {
+            selectedFileIDs = Set(filteredFiles.map(\.id))
+            lastSelectedFileID = filteredFiles.last?.id
+        }
+    }
+
+    public func toggleSelection(for file: DeviceFile) {
+        if selectedFileIDs.contains(file.id) {
+            selectedFileIDs.remove(file.id)
+            if lastSelectedFileID == file.id {
+                lastSelectedFileID = selectedFileIDs.first
+            }
+        } else {
+            selectedFileIDs.insert(file.id)
+            lastSelectedFileID = file.id
+        }
+    }
+
+    public func selectSingleFile(_ file: DeviceFile) {
+        selectedFileIDs = [file.id]
+        lastSelectedFileID = file.id
+    }
+
+    /// Selects a contiguous range of files from the last anchor item to the clicked item
+    public func selectRange(to file: DeviceFile) {
+        guard let anchorID = lastSelectedFileID,
+              let anchorIdx = filteredFiles.firstIndex(where: { $0.id == anchorID }),
+              let targetIdx = filteredFiles.firstIndex(where: { $0.id == file.id }) else {
+            selectSingleFile(file)
+            return
+        }
+        let lower = min(anchorIdx, targetIdx)
+        let upper = max(anchorIdx, targetIdx)
+        for i in lower...upper {
+            selectedFileIDs.insert(filteredFiles[i].id)
+        }
+    }
+
     // Installed apps state
+    @Published public var installedApps: [AppInfo] = []
+    @Published public var appFilter: AppFilterType = .thirdParty
+    @Published public var selectedApp: AppInfo?
     @Published public var installedPackages: [String] = []
     @Published public var isLoadingPackages: Bool = false
 
@@ -76,6 +154,21 @@ public final class AppState: ObservableObject {
 
     public init() {
         startDevicePolling()
+        setupTransferNotifications()
+    }
+
+    private func setupTransferNotifications() {
+        NotificationCenter.default.publisher(for: .transferDidComplete)
+            .receive(on: RunLoop.main)
+            .sink { [weak self] notification in
+                guard let self = self else { return }
+                // Only reload files if an upload completed.
+                // Avoid reloading on download completions to prevent wiping multi-selection and UI thrashing!
+                if let dir = notification.object as? TransferDirection, dir == .upload {
+                    self.loadFiles(at: self.currentPath)
+                }
+            }
+            .store(in: &cancellables)
     }
 
     public func startDevicePolling() {
@@ -104,12 +197,16 @@ public final class AppState: ObservableObject {
     public func navigateTo(path: String) {
         currentPath = path
         currentSection = .files(path: path)
+        selectedFileIDs.removeAll()
+        lastSelectedFileID = nil
         loadFiles(at: path)
     }
 
     public func loadFiles(at path: String) {
         guard let device = selectedDevice else { return }
         isLoadingFiles = true
+        selectedFileIDs.removeAll()
+        lastSelectedFileID = nil
 
         Task {
             do {
@@ -124,14 +221,19 @@ public final class AppState: ObservableObject {
         }
     }
 
-    public func loadPackages() {
+    public func loadPackages(filter: AppFilterType? = nil) {
         guard let device = selectedDevice else { return }
+        let currentFilter = filter ?? appFilter
+        if let f = filter {
+            self.appFilter = f
+        }
         isLoadingPackages = true
 
         Task {
             do {
-                let packages = try await ADBManager.shared.listInstalledPackages(serial: device.id)
-                self.installedPackages = packages
+                let apps = try await ADBManager.shared.listApps(serial: device.id, filter: currentFilter)
+                self.installedApps = apps
+                self.installedPackages = apps.map(\.packageName)
                 self.isLoadingPackages = false
             } catch {
                 self.isLoadingPackages = false
