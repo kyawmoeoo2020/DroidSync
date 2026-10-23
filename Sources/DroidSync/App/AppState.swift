@@ -146,6 +146,84 @@ public final class AppState: ObservableObject {
     @Published public var installedPackages: [String] = []
     @Published public var isLoadingPackages: Bool = false
 
+    // Storage Volumes state
+    @Published public var storageVolumes: [StorageVolume] = []
+    @Published public var selectedVolume: StorageVolume?
+
+    // Device Clipboard state
+    public enum ClipboardAction: String, Sendable {
+        case copy = "Copy"
+        case cut = "Cut"
+    }
+
+    public struct ClipboardItem: Identifiable, Equatable, Hashable, Sendable {
+        public var id: String { path }
+        public let path: String
+        public let name: String
+        public let isDirectory: Bool
+
+        public init(path: String, name: String, isDirectory: Bool) {
+            self.path = path
+            self.name = name
+            self.isDirectory = isDirectory
+        }
+    }
+
+    @Published public var clipboardItems: [ClipboardItem] = []
+    @Published public var clipboardAction: ClipboardAction? = nil
+    @Published public var isPasting: Bool = false
+
+    public func copySelection() {
+        let selected = selectedFiles
+        guard !selected.isEmpty else { return }
+        clipboardItems = selected.map { ClipboardItem(path: $0.path, name: $0.name, isDirectory: $0.isDirectory) }
+        clipboardAction = .copy
+    }
+
+    public func cutSelection() {
+        let selected = selectedFiles
+        guard !selected.isEmpty else { return }
+        clipboardItems = selected.map { ClipboardItem(path: $0.path, name: $0.name, isDirectory: $0.isDirectory) }
+        clipboardAction = .cut
+    }
+
+    public func clearClipboard() {
+        clipboardItems.removeAll()
+        clipboardAction = nil
+    }
+
+    public func pasteClipboard(to destinationDirectory: String) async throws {
+        guard let device = selectedDevice, !clipboardItems.isEmpty, let action = clipboardAction else { return }
+        isPasting = true
+        defer { isPasting = false }
+        let paths = clipboardItems.map(\.path)
+        if action == .copy {
+            try await ADBManager.shared.copyOnDevice(serial: device.id, sourcePaths: paths, destinationDirectory: destinationDirectory)
+        } else {
+            try await ADBManager.shared.moveOnDevice(serial: device.id, sourcePaths: paths, destinationDirectory: destinationDirectory)
+            clearClipboard()
+        }
+        loadFiles(at: destinationDirectory)
+    }
+
+    public func loadStorageVolumes() {
+        guard let device = selectedDevice else { return }
+        Task {
+            let volumes = await ADBManager.shared.fetchStorageVolumes(serial: device.id)
+            await MainActor.run {
+                self.storageVolumes = volumes
+                if self.selectedVolume == nil || !volumes.contains(where: { $0.path == self.selectedVolume?.path }) {
+                    self.selectedVolume = volumes.first
+                }
+            }
+        }
+    }
+
+    public func switchStorageVolume(_ volume: StorageVolume) {
+        self.selectedVolume = volume
+        self.navigateTo(path: volume.path)
+    }
+
     // Status / Messages
     @Published public var statusMessage: String = "Ready"
 
@@ -188,8 +266,14 @@ public final class AppState: ObservableObject {
 
             if self.selectedDevice == nil, let first = devices.first {
                 self.selectedDevice = first
+                self.loadStorageVolumes()
             } else if let current = self.selectedDevice, !devices.contains(where: { $0.id == current.id }) {
                 self.selectedDevice = devices.first
+                if self.selectedDevice != nil {
+                    self.loadStorageVolumes()
+                }
+            } else if self.selectedDevice != nil && self.storageVolumes.isEmpty {
+                self.loadStorageVolumes()
             }
         }
     }

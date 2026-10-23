@@ -44,12 +44,20 @@
 
 ### 📁 Finder-Grade File Browser (List & Grid Views)
 - **Dual Layout Modes**: Switch between detailed **List View** and Finder-style **Grid View** with scalable icon previews.
+- **💾 Storage Volume Switcher**: Auto-detects and instantly switches between **Internal Storage** (`/sdcard`) and external **MicroSD Cards** or **USB OTG Drives** (`/storage/XXXX-XXXX`) with live free space gauges.
+- **📋 On-Device File Clipboard**: Native macOS shortcut support for **Copy (`⌘C`)**, **Cut (`⌘X`)**, and **Paste (`⌘V`)** directly on Android device storage without transferring data through Mac RAM or disk.
 - **✏️ In-Place File & Folder Renaming**: Rename files and folders directly with right-click ➔ **Rename...**.
 - **🔍 Deep Device Search**: Search scope switcher to search the current directory or search everywhere across the entire phone storage recursively.
 - **Two-way Drag & Drop**: Drag files and folders directly between macOS Finder and your Android storage.
 - **👁 Quick Look (Spacebar Preview)**: Preview photos, audio, videos, and documents directly from the device without transferring them first.
 - **Real-Time Transfer Progress**: Accurate progress bar displaying real-time transfer speed (MB/s), bytes transferred, percentage, and estimated time remaining (ETA).
-- **Multi-Selection & Batch Actions**: Batch download, multi-file deletion, and folder creation.
+- **Multi-Selection & Batch Actions**: True Shift-click range selection, `⌘`-click toggling, batch download, and multi-file deletion.
+- **On-Device APK Installation**: Right-click any `.apk` stored on the phone to install it directly without downloading to Mac.
+
+### 💾 1-Click Smart Phone Backup to Mac
+- **Automated Backup Assistant**: Back up essential media and documents with one click from the Dashboard.
+- **Smart Presets**: Select any combination of **Camera Photos & Videos (DCIM)**, **Pictures & Screenshots**, **Downloads**, **Documents**, **Music**, or **Movies**.
+- **Organized Storage**: Automatically creates timestamped backup packages directly in `~/Backups/DroidSync/<DeviceName>_<Date>/`.
 
 ### 🖼️ Dedicated Camera & Photos Media Gallery
 - **Apple Photos-Style Gallery**: Visual photo grid organized by source: **Camera (DCIM)**, **Pictures**, **Screenshots**, and **Videos**.
@@ -64,10 +72,11 @@
   - **Save Image**: Save PNG directly to your Mac with automatic Finder reveal.
 - **Screen Recording**: 1-click screen recording to MP4 with live recording timer. Gracefully preserves MP4 container index and automatically reveals video in Finder.
 
-### 📦 App Manager & Batch APK Backup
+### 📦 App Manager & Next-Gen App Bundle Installer
 - **Comprehensive App Manager**: Inspect all installed apps, filtered by User Apps (3rd-party), System Apps, All Apps, and Frozen/Disabled Apps.
+- **📦 Split APK & App Bundle Support**: Full support for `.apk`, `.xapk`, `.apks`, `.apkm`, and `.zip` packages with automatic archive extraction and `adb install-multiple` orchestration.
+- **Intelligent Error Translation**: Human-readable explanations for common Android install failures (signature conflicts, version downgrades, CPU architecture mismatches).
 - **Batch APK Backup**: Select multiple apps (or all apps) and export their `.apk` installers to Mac in a single click with progress bars.
-- **Drag & Drop APK Installer**: Drag any `.apk` file into DroidSync to automatically install it with `-r -d -g` runtime permissions.
 - **Device Controls**: Launch apps directly on the phone, force stop background apps, clear data/cache, or freeze/disable bloatware.
 
 ### ⚡ Power & Hardware Quick Controls

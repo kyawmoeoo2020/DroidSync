@@ -10,6 +10,7 @@ public struct DashboardView: View {
     @State private var isCapturingScreenshot = false
     @State private var showClipboardSheet = false
     @State private var showScrcpyInstallSheet = false
+    @State private var showSmartBackupSheet = false
     @State private var toolStatusMessage = ""
     @State private var toolStatusIsError = false
 
@@ -224,6 +225,16 @@ public struct DashboardView: View {
                                 toggleScreenRecording(serial: device.id)
                             }
 
+                            // 1-Click Smart Backup Button
+                            QuickActionButton(
+                                title: "Smart Backup",
+                                subtitle: "1-Click Mac Backup",
+                                icon: "arrow.down.doc.fill",
+                                color: .cyan
+                            ) {
+                                showSmartBackupSheet = true
+                            }
+
                             // Send Mac Clipboard to Phone
                             QuickActionButton(
                                 title: "Send to Phone",
@@ -413,6 +424,19 @@ public struct DashboardView: View {
         .sheet(isPresented: $showScrcpyInstallSheet) {
             ScrcpyInstallSheet {
                 showScrcpyInstallSheet = false
+            }
+        }
+        // Smart Backup Sheet
+        .sheet(isPresented: $showSmartBackupSheet) {
+            if let dev = appState.selectedDevice {
+                SmartBackupSheet(
+                    device: dev,
+                    onDismiss: { showSmartBackupSheet = false },
+                    onBackupStarted: { count in
+                        toolStatusMessage = "Started backup of \(count) categories to Mac. Progress tracked in transfer queue below."
+                        toolStatusIsError = false
+                    }
+                )
             }
         }
         // Reboot Confirmation Alert
@@ -968,5 +992,172 @@ private struct ScrcpyInstallSheet: View {
         withAnimation {
             copiedCommand = true
         }
+    }
+}
+
+// MARK: - Smart Backup Sheet
+
+public struct SmartBackupSheet: View {
+    let device: Device
+    let onDismiss: () -> Void
+    let onBackupStarted: (Int) -> Void
+
+    @State private var selectedPresets: Set<String> = Set(BackupPreset.defaults.filter(\.defaultChecked).map(\.id))
+    @State private var destinationURL: URL = {
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        return home.appendingPathComponent("Backups").appendingPathComponent("DroidSync")
+    }()
+
+    public var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            // Header
+            HStack(spacing: 12) {
+                ZStack {
+                    Circle()
+                        .fill(Color.cyan.opacity(0.15))
+                        .frame(width: 44, height: 44)
+                    Image(systemName: "arrow.down.doc.fill")
+                        .font(.system(size: 20))
+                        .foregroundColor(.cyan)
+                }
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("1-Click Smart Phone Backup")
+                        .font(.headline)
+                    Text("Back up essential media and documents from \(device.name) directly to your Mac.")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+            }
+
+            Divider()
+
+            // Presets Selection
+            Text("Select Data Categories to Back Up:")
+                .font(.subheadline)
+                .fontWeight(.medium)
+
+            VStack(spacing: 8) {
+                ForEach(BackupPreset.defaults) { preset in
+                    HStack(spacing: 10) {
+                        Button {
+                            if selectedPresets.contains(preset.id) {
+                                selectedPresets.remove(preset.id)
+                            } else {
+                                selectedPresets.insert(preset.id)
+                            }
+                        } label: {
+                            Image(systemName: selectedPresets.contains(preset.id) ? "checkmark.square.fill" : "square")
+                                .foregroundColor(selectedPresets.contains(preset.id) ? .accentColor : .secondary)
+                                .font(.system(size: 14))
+                        }
+                        .buttonStyle(PlainButtonStyle())
+
+                        Image(systemName: preset.icon)
+                            .foregroundColor(.accentColor)
+                            .frame(width: 20)
+
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(preset.name)
+                                .font(.system(size: 13, weight: .medium))
+                            Text(preset.remotePath)
+                                .font(.system(size: 11, design: .monospaced))
+                                .foregroundColor(.secondary)
+                        }
+
+                        Spacer()
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background(Color.secondary.opacity(0.06))
+                    .cornerRadius(6)
+                }
+            }
+
+            Divider()
+
+            // Destination Folder
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Backup Destination on Mac:")
+                    .font(.subheadline)
+                    .fontWeight(.medium)
+
+                HStack {
+                    Image(systemName: "folder.fill")
+                        .foregroundColor(.secondary)
+                    Text(destinationURL.path)
+                        .font(.system(size: 11, design: .monospaced))
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                    Spacer()
+                    Button("Change...") {
+                        chooseDestination()
+                    }
+                    .font(.caption)
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 7)
+                .background(Color.secondary.opacity(0.06))
+                .cornerRadius(6)
+            }
+
+            Spacer()
+
+            // Footer
+            HStack {
+                Button("Cancel", role: .cancel) {
+                    onDismiss()
+                }
+
+                Spacer()
+
+                Button("Start Backup Now") {
+                    startBackup()
+                }
+                .buttonStyle(.borderedProminent)
+                .disabled(selectedPresets.isEmpty)
+            }
+        }
+        .padding(22)
+        .frame(width: 480, height: 530)
+    }
+
+    private func chooseDestination() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.canCreateDirectories = true
+        panel.prompt = "Select Backup Folder"
+        if panel.runModal() == .OK, let url = panel.url {
+            destinationURL = url
+        }
+    }
+
+    private func startBackup() {
+        let chosen = BackupPreset.defaults.filter { selectedPresets.contains($0.id) }
+        guard !chosen.isEmpty else { return }
+
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd_HHmm"
+        let timestamp = formatter.string(from: Date())
+        let cleanDevName = device.name.replacingOccurrences(of: "/", with: "-").replacingOccurrences(of: " ", with: "_")
+        let targetFolder = destinationURL.appendingPathComponent("\(cleanDevName)_\(timestamp)")
+
+        try? FileManager.default.createDirectory(at: targetFolder, withIntermediateDirectories: true)
+
+        for preset in chosen {
+            let catFolder = targetFolder.appendingPathComponent(preset.name.replacingOccurrences(of: " ", with: "_").replacingOccurrences(of: "&", with: "and"))
+            TransferManager.shared.enqueueDownload(
+                serial: device.id,
+                remotePath: preset.remotePath,
+                filename: (preset.remotePath as NSString).lastPathComponent,
+                sizeBytes: 0,
+                destinationURL: catFolder,
+                isDirectory: true
+            )
+        }
+
+        onBackupStarted(chosen.count)
+        onDismiss()
     }
 }

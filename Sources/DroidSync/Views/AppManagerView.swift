@@ -76,9 +76,10 @@ public struct AppManagerView: View {
 
                     // Install APK Button
                     Button(action: promptInstallApk) {
-                        Label("Install APK...", systemImage: "plus.circle.fill")
+                        Label("Install APK / XAPK...", systemImage: "plus.circle.fill")
                     }
                     .buttonStyle(.borderedProminent)
+                    .help("Install .apk or .xapk / split app bundles on your Android device")
                     .disabled(isPerformingAction)
 
                     // Refresh Button
@@ -558,7 +559,10 @@ public struct AppManagerView: View {
         panel.canChooseFiles = true
         panel.canChooseDirectories = false
         panel.allowsMultipleSelection = true
-        panel.allowedContentTypes = [UTType(filenameExtension: "apk")].compactMap { $0 }
+        let extensions = ["apk", "xapk", "apks", "apkm", "zip"]
+        panel.allowedContentTypes = extensions.compactMap { UTType(filenameExtension: $0) }
+        panel.prompt = "Install on Phone"
+        panel.message = "Choose APK, XAPK, or Split App Bundles to install"
 
         if panel.runModal() == .OK {
             let urls = panel.urls
@@ -589,16 +593,17 @@ public struct AppManagerView: View {
 
         let collector = URLCollector()
         let group = DispatchGroup()
+        let supportedExtensions: Set<String> = ["apk", "xapk", "apks", "apkm", "zip"]
 
         for provider in providers {
             group.enter()
             provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier, options: nil) { item, _ in
                 defer { group.leave() }
                 if let data = item as? Data, let url = URL(dataRepresentation: data, relativeTo: nil) {
-                    if url.pathExtension.lowercased() == "apk" {
+                    if supportedExtensions.contains(url.pathExtension.lowercased()) {
                         collector.append(url)
                     }
-                } else if let url = item as? URL, url.pathExtension.lowercased() == "apk" {
+                } else if let url = item as? URL, supportedExtensions.contains(url.pathExtension.lowercased()) {
                     collector.append(url)
                 }
             }
@@ -617,7 +622,7 @@ public struct AppManagerView: View {
         guard !urls.isEmpty else { return }
         isPerformingAction = true
         isActionError = false
-        actionMessage = "Installing \(urls.count == 1 ? urls[0].lastPathComponent : "\(urls.count) APKs")..."
+        actionMessage = "Installing \(urls.count == 1 ? urls[0].lastPathComponent : "\(urls.count) package(s)")..."
 
         Task {
             var errors: [String] = []
@@ -628,7 +633,7 @@ public struct AppManagerView: View {
                     self.actionMessage = "Installing \(url.lastPathComponent)..."
                 }
                 do {
-                    _ = try await ADBManager.shared.installApk(serial: serial, apkURL: url)
+                    _ = try await ADBManager.shared.installPackageBundle(serial: serial, fileURL: url)
                     successCount += 1
                 } catch {
                     errors.append("\(url.lastPathComponent): \(error.localizedDescription)")
@@ -638,7 +643,7 @@ public struct AppManagerView: View {
             await MainActor.run {
                 self.isPerformingAction = false
                 if errors.isEmpty {
-                    self.actionMessage = urls.count == 1 ? "Successfully installed \(urls[0].lastPathComponent)" : "Successfully installed \(successCount) APKs"
+                    self.actionMessage = urls.count == 1 ? "Successfully installed \(urls[0].lastPathComponent)" : "Successfully installed \(successCount) packages"
                     self.isActionError = false
                 } else if successCount > 0 {
                     self.actionMessage = "Installed \(successCount) of \(urls.count). Errors: \(errors.joined(separator: "; "))"

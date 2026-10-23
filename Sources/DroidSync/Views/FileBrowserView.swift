@@ -41,6 +41,39 @@ public struct FileBrowserView: View {
         VStack(spacing: 0) {
             // Path Navigation & Action Bar
             HStack(spacing: 12) {
+                // Storage Volume Selector
+                if !appState.storageVolumes.isEmpty {
+                    Menu {
+                        ForEach(appState.storageVolumes) { volume in
+                            Button {
+                                appState.switchStorageVolume(volume)
+                            } label: {
+                                Label(
+                                    volume.name + (volume.totalBytes > 0 ? " (\(volume.formattedFree) free)" : ""),
+                                    systemImage: volume.iconSystemName
+                                )
+                            }
+                        }
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: appState.selectedVolume?.iconSystemName ?? "internaldrive.fill")
+                                .foregroundColor(.accentColor)
+                                .font(.system(size: 11))
+                            Text(appState.selectedVolume?.name ?? "Storage")
+                                .font(.system(size: 11, weight: .semibold))
+                            Image(systemName: "chevron.down")
+                                .font(.system(size: 8, weight: .bold))
+                                .foregroundColor(.secondary)
+                        }
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 4)
+                        .background(Color.secondary.opacity(0.12))
+                        .cornerRadius(6)
+                    }
+                    .menuStyle(BorderlessButtonMenuStyle())
+                    .help("Switch Storage Volume (Internal vs MicroSD / OTG)")
+                }
+
                 // Back / Up Button
                 Button(action: goUp) {
                     Image(systemName: "chevron.up")
@@ -280,6 +313,37 @@ public struct FileBrowserView: View {
                 Divider()
             }
 
+            // Clipboard Banner (Copy / Cut active)
+            if !appState.clipboardItems.isEmpty {
+                HStack(spacing: 8) {
+                    Image(systemName: "doc.on.clipboard.fill")
+                        .foregroundColor(.accentColor)
+                    Text("\(appState.clipboardItems.count) item(s) in clipboard ready to \(appState.clipboardAction?.rawValue.lowercased() ?? "paste") into current folder")
+                        .font(.system(size: 11, weight: .medium))
+
+                    Spacer()
+
+                    Button("Paste Here (⌘V)") {
+                        pasteClipboardHere()
+                    }
+                    .font(.caption)
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.small)
+
+                    Button("Clear") {
+                        appState.clearClipboard()
+                    }
+                    .font(.caption)
+                    .buttonStyle(PlainButtonStyle())
+                    .foregroundColor(.secondary)
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 6)
+                .background(Color.accentColor.opacity(0.12))
+
+                Divider()
+            }
+
             // File Table / List / Grid
             if appState.isLoadingFiles {
                 VStack(spacing: 12) {
@@ -328,6 +392,30 @@ public struct FileBrowserView: View {
                     }
                 }
                 .keyboardShortcut(.space, modifiers: [])
+
+                Button("") {
+                    appState.copySelection()
+                }
+                .keyboardShortcut("c", modifiers: .command)
+                .disabled(appState.selectedFileIDs.isEmpty)
+
+                Button("") {
+                    appState.cutSelection()
+                }
+                .keyboardShortcut("x", modifiers: .command)
+                .disabled(appState.selectedFileIDs.isEmpty)
+
+                Button("") {
+                    pasteClipboardHere()
+                }
+                .keyboardShortcut("v", modifiers: .command)
+                .disabled(appState.clipboardItems.isEmpty)
+
+                Button("") {
+                    appState.clearClipboard()
+                }
+                .keyboardShortcut(.escape, modifiers: [])
+                .disabled(appState.clipboardItems.isEmpty)
             }
             .opacity(0)
         )
@@ -479,6 +567,18 @@ public struct FileBrowserView: View {
                 downloadSelectedFiles()
             }
             Divider()
+            Button("Copy \(appState.selectedFileIDs.count) Items (⌘C)") {
+                appState.copySelection()
+            }
+            Button("Cut \(appState.selectedFileIDs.count) Items (⌘X)") {
+                appState.cutSelection()
+            }
+            if !appState.clipboardItems.isEmpty {
+                Button("Paste \(appState.clipboardItems.count) Items Here (⌘V)") {
+                    pasteClipboardHere()
+                }
+            }
+            Divider()
             Button("Delete \(appState.selectedFileIDs.count) Selected Items", role: .destructive) {
                 showingDeleteConfirmation = true
             }
@@ -500,9 +600,54 @@ public struct FileBrowserView: View {
                 promptRename(file)
             }
             Divider()
+            Button("Copy (⌘C)") {
+                appState.selectSingleFile(file)
+                appState.copySelection()
+            }
+            Button("Cut (⌘X)") {
+                appState.selectSingleFile(file)
+                appState.cutSelection()
+            }
+            if file.isDirectory && !appState.clipboardItems.isEmpty {
+                Button("Paste \(appState.clipboardItems.count) Items into '\(file.name)'") {
+                    pasteClipboardInto(directory: file.path)
+                }
+            } else if !appState.clipboardItems.isEmpty {
+                Button("Paste \(appState.clipboardItems.count) Items Here (⌘V)") {
+                    pasteClipboardHere()
+                }
+            }
+            Divider()
             Button("Delete", role: .destructive) {
                 appState.selectSingleFile(file)
                 showingDeleteConfirmation = true
+            }
+        }
+    }
+
+    private func pasteClipboardHere() {
+        pasteClipboardInto(directory: appState.currentPath)
+    }
+
+    private func pasteClipboardInto(directory: String) {
+        guard !appState.clipboardItems.isEmpty else { return }
+        let count = appState.clipboardItems.count
+        let actionName = appState.clipboardAction?.rawValue.lowercased() ?? "paste"
+        browserMessage = "Executing \(actionName) of \(count) item(s)..."
+        isBrowserError = false
+
+        Task {
+            do {
+                try await appState.pasteClipboard(to: directory)
+                await MainActor.run {
+                    browserMessage = "Successfully completed \(actionName) for \(count) item(s)"
+                    isBrowserError = false
+                }
+            } catch {
+                await MainActor.run {
+                    browserMessage = "Failed to \(actionName): \(error.localizedDescription)"
+                    isBrowserError = true
+                }
             }
         }
     }

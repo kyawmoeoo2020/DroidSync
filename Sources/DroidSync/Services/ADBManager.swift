@@ -1591,4 +1591,180 @@ public final class ADBManager: @unchecked Sendable {
         try process.run()
         return process
     }
+
+    // MARK: - Multi-Storage Volume Detection
+
+    /// Detects all storage volumes mounted on the device (Internal storage, MicroSD cards, OTG USB drives)
+    public func fetchStorageVolumes(serial: String) async -> [StorageVolume] {
+        var volumes: [StorageVolume] = []
+
+        // 1. Internal Storage (/sdcard)
+        var internalTotal: Int64 = 0
+        var internalFree: Int64 = 0
+        if let dfOut = try? await executeAdb(["-s", serial, "shell", "df", "/sdcard"]) {
+            let dfLines = dfOut.components(separatedBy: .newlines)
+            if dfLines.count > 1 {
+                let parts = dfLines[1].split(whereSeparator: \.isWhitespace)
+                if parts.count >= 4 {
+                    internalTotal = (Int64(parts[1]) ?? 0) * 1024
+                    internalFree = (Int64(parts[3]) ?? 0) * 1024
+                }
+            }
+        }
+        volumes.append(StorageVolume(
+            path: "/sdcard",
+            name: "Internal Storage",
+            isRemovable: false,
+            totalBytes: internalTotal,
+            freeBytes: internalFree
+        ))
+
+        // 2. Discover external / removable storage (MicroSD cards & USB OTG)
+        let checkScript = """
+        for d in /storage/*; do
+            [ -d "$d" ] || continue
+            base="$(basename "$d")"
+            if [ "$base" != "emulated" ] && [ "$base" != "self" ] && [ "$base" != "knox" ]; then
+                echo "$d"
+            fi
+        done
+        """
+        if let extraDirs = try? await executeAdb(["-s", serial, "shell", "sh", "-c", checkScript]) {
+            let lines = extraDirs.components(separatedBy: .newlines)
+            for line in lines {
+                let p = line.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !p.isEmpty && p.hasPrefix("/storage/") else { continue }
+                let volName = (p as NSString).lastPathComponent
+
+                // Query df for this mount
+                var volTotal: Int64 = 0
+                var volFree: Int64 = 0
+                if let dfOut = try? await executeAdb(["-s", serial, "shell", "df", p]) {
+                    let dfLines = dfOut.components(separatedBy: .newlines)
+                    if dfLines.count > 1 {
+                        let parts = dfLines[1].split(whereSeparator: \.isWhitespace)
+                        if parts.count >= 4 {
+                            volTotal = (Int64(parts[1]) ?? 0) * 1024
+                            volFree = (Int64(parts[3]) ?? 0) * 1024
+                        }
+                    }
+                }
+
+                let label = volName.contains("-") ? "SD Card (\(volName))" : "External Storage (\(volName))"
+                volumes.append(StorageVolume(
+                    path: p,
+                    name: label,
+                    isRemovable: true,
+                    totalBytes: volTotal,
+                    freeBytes: volFree
+                ))
+            }
+        }
+
+        return volumes
+    }
+
+    // MARK: - On-Device File Operations (Copy / Move)
+
+    /// Copies files or folders directly on Android device storage without transferring over USB
+    public func copyOnDevice(serial: String, sourcePaths: [String], destinationDirectory: String) async throws {
+        guard !sourcePaths.isEmpty else { return }
+        let cleanDest = destinationDirectory.isEmpty ? "/sdcard" : destinationDirectory
+        let quotedDest = "'\(cleanDest.replacingOccurrences(of: "'", with: "'\\''"))'"
+
+        for src in sourcePaths {
+            let quotedSrc = "'\(src.replacingOccurrences(of: "'", with: "'\\''"))'"
+            let script = "cp -r \(quotedSrc) \(quotedDest)/"
+            let res = try await executeAdbDetailed(["-s", serial, "shell", "sh", "-c", script])
+            if res.exitCode != 0 {
+                let err = res.stderr.trimmingCharacters(in: .whitespacesAndNewlines)
+                throw NSError(
+                    domain: "ADBManager",
+                    code: Int(res.exitCode),
+                    userInfo: [NSLocalizedDescriptionKey: err.isEmpty ? "Failed to copy \(src)" : err]
+                )
+            }
+        }
+    }
+
+    /// Moves files or folders directly on Android device storage
+    public func moveOnDevice(serial: String, sourcePaths: [String], destinationDirectory: String) async throws {
+        guard !sourcePaths.isEmpty else { return }
+        let cleanDest = destinationDirectory.isEmpty ? "/sdcard" : destinationDirectory
+        let quotedDest = "'\(cleanDest.replacingOccurrences(of: "'", with: "'\\''"))'"
+
+        for src in sourcePaths {
+            let quotedSrc = "'\(src.replacingOccurrences(of: "'", with: "'\\''"))'"
+            let script = "mv \(quotedSrc) \(quotedDest)/"
+            let res = try await executeAdbDetailed(["-s", serial, "shell", "sh", "-c", script])
+            if res.exitCode != 0 {
+                let err = res.stderr.trimmingCharacters(in: .whitespacesAndNewlines)
+                throw NSError(
+                    domain: "ADBManager",
+                    code: Int(res.exitCode),
+                    userInfo: [NSLocalizedDescriptionKey: err.isEmpty ? "Failed to move \(src)" : err]
+                )
+            }
+        }
+    }
+
+    // MARK: - Split APK & Bundle Installer (.xapk, .apks, .apkm)
+
+    /// Install multiple split APKs at once using adb install-multiple
+    public func installMultipleApks(serial: String, apkPaths: [String]) async throws -> String {
+        guard !apkPaths.isEmpty else {
+            throw NSError(domain: "ADBManager", code: 400, userInfo: [NSLocalizedDescriptionKey: "No APKs specified for installation."])
+        }
+        var args = ["-s", serial, "install-multiple", "-r", "-d", "-t", "-g"]
+        args.append(contentsOf: apkPaths)
+        let res = try await executeAdbDetailed(args)
+        let output = res.combinedOutput.trimmingCharacters(in: .whitespacesAndNewlines)
+        if output.contains("Failure [") || res.exitCode != 0 {
+            let reason = Self.parseInstallFailure(output: output)
+            throw NSError(
+                domain: "ADBManager",
+                code: Int(res.exitCode != 0 ? res.exitCode : 1),
+                userInfo: [NSLocalizedDescriptionKey: reason]
+            )
+        }
+        return output.isEmpty ? "Success" : output
+    }
+
+    /// Installs an APK or multi-part package archive (.xapk, .apks, .apkm, .zip)
+    public func installPackageBundle(serial: String, fileURL: URL) async throws -> String {
+        let ext = fileURL.pathExtension.lowercased()
+        if ext == "apk" {
+            return try await installApk(serial: serial, apkURL: fileURL)
+        }
+
+        // Handle archive bundles: .xapk, .apks, .apkm, .zip
+        let tempDir = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("DroidSync_APK_\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        defer {
+            try? FileManager.default.removeItem(at: tempDir)
+        }
+
+        let unzipRes = runProcessDetailed(executable: "/usr/bin/unzip", arguments: ["-q", "-o", fileURL.path, "-d", tempDir.path])
+        if unzipRes.exitCode != 0 {
+            throw NSError(domain: "ADBManager", code: Int(unzipRes.exitCode), userInfo: [NSLocalizedDescriptionKey: "Failed to extract package archive \(fileURL.lastPathComponent): \(unzipRes.stderr)"])
+        }
+
+        let enumerator = FileManager.default.enumerator(at: tempDir, includingPropertiesForKeys: [.isRegularFileKey])
+        var apkPaths: [String] = []
+        while let file = enumerator?.nextObject() as? URL {
+            if file.pathExtension.lowercased() == "apk" {
+                apkPaths.append(file.path)
+            }
+        }
+
+        if apkPaths.isEmpty {
+            throw NSError(domain: "ADBManager", code: 404, userInfo: [NSLocalizedDescriptionKey: "No APK files found inside \(fileURL.lastPathComponent)."])
+        }
+
+        if apkPaths.count == 1, let single = apkPaths.first {
+            return try await installApk(serial: serial, apkURL: URL(fileURLWithPath: single))
+        } else {
+            return try await installMultipleApks(serial: serial, apkPaths: apkPaths)
+        }
+    }
 }
