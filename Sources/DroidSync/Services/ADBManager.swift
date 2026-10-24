@@ -1042,6 +1042,10 @@ public final class ADBManager: @unchecked Sendable {
 
     /// Parse known Android Package Manager installation errors into user-friendly guidance
     public static func parseInstallFailure(output: String) -> String {
+        if output.contains("INSTALL_GRANT_RUNTIME_PERMISSIONS") || output.contains("SecurityException") {
+            return "Security restriction: Installation blocked by device security policy. Ensure 'Install via USB' is enabled in Developer Options on your phone."
+        }
+
         let regex = try? NSRegularExpression(pattern: "Failure\\s*\\[([A-Z_0-9]+)(?::\\s*([^\\]]+))?\\]", options: [.caseInsensitive])
         if let match = regex?.firstMatch(in: output, range: NSRange(output.startIndex..<output.endIndex, in: output)) {
             let code = (output as NSString).substring(with: match.range(at: 1))
@@ -1073,7 +1077,7 @@ public final class ADBManager: @unchecked Sendable {
         return "Installation failed (unknown error)"
     }
 
-    /// Install APK with flags -r (reinstall), -d (downgrade), -t (test-only), -g (grant permissions)
+    /// Install APK with flags -r (reinstall), -d (downgrade), -t (test-only)
     public func installApk(serial: String, apkURL: URL) async throws -> String {
         guard FileManager.default.fileExists(atPath: apkURL.path) else {
             throw NSError(
@@ -1083,7 +1087,7 @@ public final class ADBManager: @unchecked Sendable {
             )
         }
 
-        let res = try await executeAdbDetailed(["-s", serial, "install", "-r", "-d", "-t", "-g", apkURL.path])
+        let res = try await executeAdbDetailed(["-s", serial, "install", "-r", "-d", "-t", apkURL.path])
         let output = res.combinedOutput.trimmingCharacters(in: .whitespacesAndNewlines)
 
         if output.contains("Failure [") || res.exitCode != 0 {
@@ -1101,7 +1105,7 @@ public final class ADBManager: @unchecked Sendable {
     /// Install APK located directly on device storage
     public func installApkOnDevice(serial: String, remotePath: String) async throws -> String {
         let quoted = "'\(remotePath.replacingOccurrences(of: "'", with: "'\\''"))'"
-        let res = try await executeAdbDetailed(["-s", serial, "shell", "pm", "install", "-r", "-d", "-t", "-g", quoted])
+        let res = try await executeAdbDetailed(["-s", serial, "shell", "pm", "install", "-r", "-d", "-t", quoted])
         let output = res.combinedOutput.trimmingCharacters(in: .whitespacesAndNewlines)
 
         if output.contains("Failure [") || res.exitCode != 0 {
@@ -1736,7 +1740,7 @@ public final class ADBManager: @unchecked Sendable {
         guard !apkPaths.isEmpty else {
             throw NSError(domain: "ADBManager", code: 400, userInfo: [NSLocalizedDescriptionKey: "No APKs specified for installation."])
         }
-        var args = ["-s", serial, "install-multiple", "-r", "-d", "-t", "-g"]
+        var args = ["-s", serial, "install-multiple", "-r", "-d", "-t"]
         args.append(contentsOf: apkPaths)
         let res = try await executeAdbDetailed(args)
         let output = res.combinedOutput.trimmingCharacters(in: .whitespacesAndNewlines)
