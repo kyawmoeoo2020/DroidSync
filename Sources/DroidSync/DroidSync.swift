@@ -57,7 +57,7 @@ struct DroidSyncApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
 
     public static var appVersion: String {
-        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.2.0"
+        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.2.1"
     }
 
     init() {
