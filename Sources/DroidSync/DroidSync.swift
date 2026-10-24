@@ -15,6 +15,41 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         return true
     }
+
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        NSEvent.addLocalMonitorForEvents(matching: .leftMouseDown) { event in
+            guard event.clickCount == 2, let window = event.window else {
+                return event
+            }
+
+            let loc = event.locationInWindow
+            let windowHeight = max(window.frame.size.height, window.contentView?.frame.size.height ?? 0)
+            let titleBarHeight: CGFloat = 56.0
+
+            if loc.y >= windowHeight - titleBarHeight {
+                if let hitView = window.contentView?.hitTest(loc) {
+                    var current: NSView? = hitView
+                    var isInteractiveControl = false
+                    while let v = current {
+                        if v is NSControl {
+                            isInteractiveControl = true
+                            break
+                        }
+                        current = v.superview
+                    }
+                    if !isInteractiveControl {
+                        window.performZoom(nil)
+                        return nil
+                    }
+                } else {
+                    window.performZoom(nil)
+                    return nil
+                }
+            }
+
+            return event
+        }
+    }
 }
 
 @main

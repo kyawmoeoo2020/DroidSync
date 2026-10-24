@@ -3,6 +3,7 @@ import SwiftUI
 public struct TransferQueueBar: View {
     @ObservedObject var transferManager = TransferManager.shared
     @State private var isExpanded = false
+    @AppStorage("transferQueueDrawerHeight") private var drawerHeight: Double = 220
 
     public var body: some View {
         VStack(spacing: 0) {
@@ -165,7 +166,7 @@ public struct TransferQueueBar: View {
 
             // Expanded Queue Drawer
             if isExpanded {
-                Divider()
+                QueueResizeHandleView(height: $drawerHeight)
 
                 VStack(spacing: 0) {
                     // Drawer Header
@@ -303,10 +304,82 @@ public struct TransferQueueBar: View {
                         }
                         .padding(.vertical, 4)
                     }
-                    .frame(maxHeight: 180)
+                    .frame(height: CGFloat(drawerHeight))
                     .background(Color(NSColor.controlBackgroundColor))
                 }
             }
         }
+    }
+}
+
+// MARK: - Queue Panel Resize Handle
+
+public struct QueueResizeHandleView: View {
+    @Binding var height: Double
+    let minHeight: Double
+    let maxHeight: Double
+    let defaultHeight: Double
+
+    @State private var isHovering = false
+    @State private var dragInitialHeight: Double?
+
+    public init(height: Binding<Double>, minHeight: Double = 100, maxHeight: Double = 550, defaultHeight: Double = 220) {
+        self._height = height
+        self.minHeight = minHeight
+        self.maxHeight = maxHeight
+        self.defaultHeight = defaultHeight
+    }
+
+    public var body: some View {
+        ZStack {
+            // Visual divider line
+            Rectangle()
+                .fill(isHovering ? Color.accentColor.opacity(0.8) : Color(NSColor.separatorColor))
+                .frame(height: isHovering ? 2 : 1)
+
+            // Invisible hit target area for easy grabbing
+            Rectangle()
+                .fill(Color.clear)
+                .frame(height: 10)
+                .contentShape(Rectangle())
+
+            // macOS grab handle indicator
+            if isHovering {
+                Capsule()
+                    .fill(Color.accentColor)
+                    .frame(width: 38, height: 4)
+                    .shadow(color: Color.black.opacity(0.15), radius: 1, y: 1)
+            }
+        }
+        .frame(height: 10)
+        .onHover { hovering in
+            isHovering = hovering
+            if hovering {
+                NSCursor.resizeUpDown.push()
+            } else {
+                NSCursor.pop()
+            }
+        }
+        .gesture(
+            DragGesture(minimumDistance: 1, coordinateSpace: .global)
+                .onChanged { value in
+                    if dragInitialHeight == nil {
+                        dragInitialHeight = height
+                    }
+                    if let start = dragInitialHeight {
+                        let proposed = start - Double(value.translation.height)
+                        height = min(max(proposed, minHeight), maxHeight)
+                    }
+                }
+                .onEnded { _ in
+                    dragInitialHeight = nil
+                }
+        )
+        .onTapGesture(count: 2) {
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                height = defaultHeight
+            }
+        }
+        .help("Drag up/down to resize transfer queue panel. Double-click to reset.")
     }
 }
