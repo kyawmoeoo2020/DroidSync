@@ -1670,12 +1670,25 @@ public final class ADBManager: @unchecked Sendable {
     public func copyOnDevice(serial: String, sourcePaths: [String], destinationDirectory: String) async throws {
         guard !sourcePaths.isEmpty else { return }
         let cleanDest = destinationDirectory.isEmpty ? "/sdcard" : destinationDirectory
-        let quotedDest = "'\(cleanDest.replacingOccurrences(of: "'", with: "'\\''"))'"
+        let normalizedDest = cleanDest.hasSuffix("/") ? cleanDest : "\(cleanDest)/"
 
         for src in sourcePaths {
+            let srcParent = (src as NSString).deletingLastPathComponent
+            let isSameDir = srcParent == cleanDest || "\(srcParent)/" == normalizedDest
+
+            var targetPath = normalizedDest
+            if isSameDir {
+                let filename = (src as NSString).lastPathComponent
+                let ext = (filename as NSString).pathExtension
+                let base = (filename as NSString).deletingPathExtension
+                let copyName = ext.isEmpty ? "\(base)_copy" : "\(base)_copy.\(ext)"
+                targetPath = normalizedDest + copyName
+            }
+
             let quotedSrc = "'\(src.replacingOccurrences(of: "'", with: "'\\''"))'"
-            let script = "cp -r \(quotedSrc) \(quotedDest)/"
-            let res = try await executeAdbDetailed(["-s", serial, "shell", "sh", "-c", script])
+            let quotedTarget = "'\(targetPath.replacingOccurrences(of: "'", with: "'\\''"))'"
+            let cmd = "cp -r \(quotedSrc) \(quotedTarget)"
+            let res = try await executeAdbDetailed(["-s", serial, "shell", cmd])
             if res.exitCode != 0 {
                 let err = res.stderr.trimmingCharacters(in: .whitespacesAndNewlines)
                 throw NSError(
@@ -1691,12 +1704,20 @@ public final class ADBManager: @unchecked Sendable {
     public func moveOnDevice(serial: String, sourcePaths: [String], destinationDirectory: String) async throws {
         guard !sourcePaths.isEmpty else { return }
         let cleanDest = destinationDirectory.isEmpty ? "/sdcard" : destinationDirectory
-        let quotedDest = "'\(cleanDest.replacingOccurrences(of: "'", with: "'\\''"))'"
+        let normalizedDest = cleanDest.hasSuffix("/") ? cleanDest : "\(cleanDest)/"
 
         for src in sourcePaths {
+            let srcParent = (src as NSString).deletingLastPathComponent
+            let isSameDir = srcParent == cleanDest || "\(srcParent)/" == normalizedDest
+            if isSameDir {
+                // Moving to the same directory is a graceful no-op
+                continue
+            }
+
             let quotedSrc = "'\(src.replacingOccurrences(of: "'", with: "'\\''"))'"
-            let script = "mv \(quotedSrc) \(quotedDest)/"
-            let res = try await executeAdbDetailed(["-s", serial, "shell", "sh", "-c", script])
+            let quotedTarget = "'\(normalizedDest.replacingOccurrences(of: "'", with: "'\\''"))'"
+            let cmd = "mv \(quotedSrc) \(quotedTarget)"
+            let res = try await executeAdbDetailed(["-s", serial, "shell", cmd])
             if res.exitCode != 0 {
                 let err = res.stderr.trimmingCharacters(in: .whitespacesAndNewlines)
                 throw NSError(
