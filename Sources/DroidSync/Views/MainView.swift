@@ -34,7 +34,7 @@ public struct MainView: View {
 
     private var navigationTitle: String {
         if let device = appState.selectedDevice {
-            return "\(device.name) — DroidSync"
+            return device.name
         }
         return "DroidSync"
     }
