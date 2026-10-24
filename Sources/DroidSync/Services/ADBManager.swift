@@ -981,23 +981,24 @@ public final class ADBManager: @unchecked Sendable {
     /// Scan and fetch media files (photos, videos) from device storage
     public func fetchMediaFiles(serial: String, source: MediaSource) async throws -> [PhotoItem] {
         let searchRoots = source.searchPaths
-        var combinedScript = ""
-        for path in searchRoots {
-            let quoted = "'\(path.replacingOccurrences(of: "'", with: "'\\''"))'"
-            combinedScript += """
-            if [ -d \(quoted) ]; then
-                find \(quoted) -maxdepth 3 -type f \\( -iname "*.jpg" -o -iname "*.jpeg" -o -iname "*.png" -o -iname "*.webp" -o -iname "*.heic" -o -iname "*.mp4" -o -iname "*.mov" \\) 2>/dev/null | head -n 300 | while IFS= read -r f; do
-                    [ -f "$f" ] && stat -c "%s %Y %n" "$f" 2>/dev/null || ls -ld "$f" 2>/dev/null
-                done
+        let quotedDirs = searchRoots.map { "'\($0.replacingOccurrences(of: "'", with: "'\\''"))'" }.joined(separator: " ")
+
+        let script = """
+        for dir in \(quotedDirs); do
+            if [ -d "$dir" ]; then
+                find "$dir" -maxdepth 3 -type f \\( -iname "*.jpg" -o -iname "*.jpeg" -o -iname "*.png" -o -iname "*.webp" -o -iname "*.heic" -o -iname "*.mp4" -o -iname "*.mov" \\) 2>/dev/null
             fi
-            """
-        }
-        let raw = try await executeAdb(["-s", serial, "shell", "sh", "-c", combinedScript])
+        done | head -n 500 | while IFS= read -r f; do
+            [ -f "$f" ] && stat -c "%s %Y %n" "$f" 2>/dev/null || ls -ld "$f" 2>/dev/null
+        done
+        """
+
+        let raw = try await executeAdb(["-s", serial, "shell", script])
         var items: [PhotoItem] = []
         var seenPaths = Set<String>()
 
         for line in raw.components(separatedBy: .newlines) {
-            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
             if trimmed.isEmpty { continue }
 
             let tokens = trimmed.split(whereSeparator: \.isWhitespace).map(String.init)
@@ -1038,6 +1039,12 @@ public final class ADBManager: @unchecked Sendable {
         }
 
         return items.sorted { $0.dateModified > $1.dateModified }
+    }
+
+    /// Fetch raw bytes for a media file (for thumbnail rendering)
+    public func fetchMediaThumbnailData(serial: String, remotePath: String) async throws -> Data {
+        let quoted = "'\(remotePath.replacingOccurrences(of: "'", with: "'\\''"))'"
+        return try await executeAdbBinary(["-s", serial, "exec-out", "cat", quoted])
     }
 
     /// Parse known Android Package Manager installation errors into user-friendly guidance

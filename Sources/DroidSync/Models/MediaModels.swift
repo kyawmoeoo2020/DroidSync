@@ -22,13 +22,13 @@ public enum MediaSource: String, CaseIterable, Identifiable, Sendable {
     public var searchPaths: [String] {
         switch self {
         case .all:
-            return ["/sdcard/DCIM", "/sdcard/Pictures"]
+            return ["/sdcard/DCIM", "/sdcard/Pictures", "/sdcard/Movies"]
         case .camera:
             return ["/sdcard/DCIM/Camera", "/sdcard/DCIM"]
         case .pictures:
             return ["/sdcard/Pictures"]
         case .screenshots:
-            return ["/sdcard/Pictures/Screenshots", "/sdcard/DCIM/Screenshots"]
+            return ["/sdcard/DCIM/Screenshots", "/sdcard/Pictures/Screenshots"]
         case .movies:
             return ["/sdcard/Movies", "/sdcard/DCIM/Camera"]
         }

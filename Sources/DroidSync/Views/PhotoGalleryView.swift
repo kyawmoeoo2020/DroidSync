@@ -1,5 +1,40 @@
 import SwiftUI
 import AppKit
+import ImageIO
+
+public final class MediaThumbnailCache: @unchecked Sendable {
+    public static let shared = MediaThumbnailCache()
+    private let cache = NSCache<NSString, NSImage>()
+
+    private init() {
+        cache.countLimit = 300
+        cache.totalCostLimit = 64 * 1024 * 1024 // 64 MB
+    }
+
+    public func thumbnail(for path: String) -> NSImage? {
+        cache.object(forKey: path as NSString)
+    }
+
+    public func setThumbnail(_ image: NSImage, for path: String) {
+        cache.setObject(image, forKey: path as NSString)
+    }
+}
+
+private func createThumbnail(from data: Data, maxPixelSize: CGFloat = 280) -> NSImage? {
+    guard let source = CGImageSourceCreateWithData(data as CFData, nil) else {
+        return NSImage(data: data)
+    }
+    let options: [CFString: Any] = [
+        kCGImageSourceCreateThumbnailFromImageAlways: true,
+        kCGImageSourceShouldCacheImmediately: true,
+        kCGImageSourceCreateThumbnailWithTransform: true,
+        kCGImageSourceThumbnailMaxPixelSize: maxPixelSize
+    ]
+    guard let cgImage = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) else {
+        return NSImage(data: data)
+    }
+    return NSImage(cgImage: cgImage, size: NSSize(width: cgImage.width, height: cgImage.height))
+}
 
 public struct PhotoGalleryView: View {
     @ObservedObject var appState: AppState
@@ -237,6 +272,9 @@ public struct PhotoGalleryView: View {
                 loadMedia()
             }
         }
+        .onChange(of: appState.selectedDevice?.id) { _, _ in
+            loadMedia()
+        }
         // Keyboard Shortcuts
         .background(
             Group {
@@ -428,15 +466,25 @@ private struct PhotoThumbnailCard: View {
     let isSelected: Bool
     let serial: String
 
+    @State private var thumbnailImage: NSImage?
+
     var body: some View {
         ZStack(alignment: .bottomLeading) {
-            // Background & Fallback Graphic
+            // Background & Thumbnail / Fallback Graphic
             ZStack {
                 Color(NSColor.controlBackgroundColor)
 
-                Image(systemName: item.isVideo ? "film.fill" : "photo.fill")
-                    .font(.system(size: 28))
-                    .foregroundColor(item.isVideo ? .purple.opacity(0.4) : .blue.opacity(0.4))
+                if let img = thumbnailImage {
+                    Image(nsImage: img)
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                        .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
+                        .clipped()
+                } else {
+                    Image(systemName: item.isVideo ? "film.fill" : "photo.fill")
+                        .font(.system(size: 28))
+                        .foregroundColor(item.isVideo ? .purple.opacity(0.4) : .blue.opacity(0.4))
+                }
             }
             .aspectRatio(1.0, contentMode: .fit)
             .cornerRadius(8)
@@ -444,6 +492,25 @@ private struct PhotoThumbnailCard: View {
                 RoundedRectangle(cornerRadius: 8)
                     .stroke(isSelected ? Color.accentColor : Color.secondary.opacity(0.15), lineWidth: isSelected ? 2.5 : 1)
             )
+            .task(id: item.path) {
+                if item.isVideo { return }
+                if let cached = MediaThumbnailCache.shared.thumbnail(for: item.path) {
+                    self.thumbnailImage = cached
+                    return
+                }
+                guard item.sizeBytes <= 25 * 1024 * 1024 else { return }
+                do {
+                    let data = try await ADBManager.shared.fetchMediaThumbnailData(serial: serial, remotePath: item.path)
+                    if let thumb = createThumbnail(from: data, maxPixelSize: 320) {
+                        MediaThumbnailCache.shared.setThumbnail(thumb, for: item.path)
+                        await MainActor.run {
+                            self.thumbnailImage = thumb
+                        }
+                    }
+                } catch {
+                    // Fallback to placeholder icon
+                }
+            }
 
             // Selection Checkmark Pill (top right)
             VStack {
